@@ -1,5 +1,10 @@
 import type { ContentScriptContext } from 'wxt/utils/content-script-context';
-import { autoScrollEnabled, stickyYoutubeEnabled } from '../utils/storage';
+import {
+  autoScrollEnabled,
+  stickyYoutubeEnabled,
+  stickyPlayerCorner,
+  stickyPlayerSize,
+} from '../utils/storage';
 import { injectStyle, removeElement } from '../utils/dom';
 
 export default defineContentScript({
@@ -17,6 +22,12 @@ export default defineContentScript({
       stickyEnabled = v;
       if (!v) teardownStickyPlayer();
     });
+
+    const savedCorner = await stickyPlayerCorner.getValue();
+    const savedSize = await stickyPlayerSize.getValue();
+    activeCorner = savedCorner;
+    activeWidth = savedSize.width;
+    activeHeight = savedSize.height;
 
     startActiveTrackObserver(ctx, () => scrollEnabled);
     startStickyYoutubeObserver(ctx, () => stickyEnabled);
@@ -87,32 +98,97 @@ function scrollToTrack(activeItem: HTMLElement): void {
 // Feature: sticky YouTube player
 // ---------------------------------------------------------------------------
 
+type Corner = 'tr' | 'tl' | 'br' | 'bl';
+const OPPOSITE: Record<Corner, Corner> = { tr: 'bl', tl: 'br', br: 'tl', bl: 'tr' };
+
 const STICKY_STYLE_ID = 'tlt-sticky-yt-style';
 const STICKY_CLASS = 'tlt-sticky-iframe';
 const STICKY_PLACEHOLDER_ID = 'tlt-sticky-placeholder';
 const STICKY_SENTINEL_ID = 'tlt-sticky-sentinel';
+const STICKY_CONTROLS_ID = 'tlt-sticky-controls';
 
 const STICKY_CSS = `
-.${STICKY_CLASS} {
+.tlt-sticky-iframe {
   position: fixed !important;
-  top: 8px !important;
-  right: 8px !important;
-  width: 320px !important;
-  height: 180px !important;
   z-index: 99999 !important;
-  box-shadow: 0 4px 24px rgba(0,0,0,.6);
+  box-shadow: 0 4px 24px rgba(0,0,0,.6) !important;
+  border-radius: 6px !important;
+}
+#tlt-sticky-controls {
+  position: fixed;
+  z-index: 100000;
+  pointer-events: none;
   border-radius: 6px;
 }
+#tlt-sticky-drag-bar {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 22px;
+  pointer-events: auto;
+  cursor: grab;
+  background: linear-gradient(rgba(0,0,0,0.55), transparent);
+  border-radius: 6px 6px 0 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+#tlt-sticky-drag-bar:hover, #tlt-sticky-drag-bar.dragging { opacity: 1; }
+#tlt-sticky-drag-bar.dragging { cursor: grabbing; }
+#tlt-sticky-drag-bar::after {
+  content: '';
+  display: block;
+  width: 24px; height: 3px;
+  background: rgba(255,255,255,0.65);
+  border-radius: 2px;
+}
+.tlt-resize-handle {
+  position: absolute;
+  pointer-events: auto;
+  width: 22px; height: 22px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.tlt-resize-handle:hover { opacity: 1; }
+.tlt-resize-handle::before {
+  content: '';
+  position: absolute;
+  inset: 5px;
+  border-color: rgba(255,255,255,0.75);
+  border-style: solid;
+  border-width: 0;
+}
+.tlt-resize-tl { top: 0; left: 0; cursor: nwse-resize; }
+.tlt-resize-tl::before { border-top-width: 2px; border-left-width: 2px; }
+.tlt-resize-tr { top: 0; right: 0; cursor: nesw-resize; }
+.tlt-resize-tr::before { border-top-width: 2px; border-right-width: 2px; }
+.tlt-resize-bl { bottom: 0; left: 0; cursor: nesw-resize; }
+.tlt-resize-bl::before { border-bottom-width: 2px; border-left-width: 2px; }
+.tlt-resize-br { bottom: 0; right: 0; cursor: nwse-resize; }
+.tlt-resize-br::before { border-bottom-width: 2px; border-right-width: 2px; }
 `;
 
 let originalIframe: HTMLIFrameElement | null = null;
+let activeCorner: Corner = 'tr';
+let activeWidth = 320;
+let activeHeight = 180;
+
+function positionEl(el: HTMLElement): void {
+  const isTop = activeCorner[0] === 't';
+  const isRight = activeCorner[1] === 'r';
+  el.style.top = isTop ? '8px' : 'auto';
+  el.style.bottom = isTop ? 'auto' : '8px';
+  el.style.right = isRight ? '8px' : 'auto';
+  el.style.left = isRight ? 'auto' : '8px';
+  el.style.width = activeWidth + 'px';
+  el.style.height = activeHeight + 'px';
+}
 
 function attachStickyPlayer(iframe: HTMLIFrameElement): void {
   if (iframe.classList.contains(STICKY_CLASS)) return;
   injectStyle(STICKY_STYLE_ID, STICKY_CSS);
 
-  // Insert a same-size placeholder so the page layout doesn't shift when the
-  // iframe leaves the normal flow.
   const placeholder = document.createElement('div');
   placeholder.id = STICKY_PLACEHOLDER_ID;
   placeholder.style.width = iframe.offsetWidth + 'px';
@@ -120,11 +196,135 @@ function attachStickyPlayer(iframe: HTMLIFrameElement): void {
   iframe.parentNode?.insertBefore(placeholder, iframe);
 
   iframe.classList.add(STICKY_CLASS);
+  positionEl(iframe);
+  buildControls(iframe);
 }
 
 function teardownStickyPlayer(): void {
-  if (originalIframe) originalIframe.classList.remove(STICKY_CLASS);
+  if (originalIframe) {
+    originalIframe.classList.remove(STICKY_CLASS);
+    for (const p of ['top', 'bottom', 'left', 'right', 'width', 'height'] as const) {
+      originalIframe.style[p] = '';
+    }
+  }
   removeElement(`#${STICKY_PLACEHOLDER_ID}`);
+  removeElement(`#${STICKY_CONTROLS_ID}`);
+}
+
+function buildControls(iframe: HTMLIFrameElement): void {
+  removeElement(`#${STICKY_CONTROLS_ID}`);
+  const controls = document.createElement('div');
+  controls.id = STICKY_CONTROLS_ID;
+  positionEl(controls);
+
+  const dragBar = document.createElement('div');
+  dragBar.id = 'tlt-sticky-drag-bar';
+  dragBar.addEventListener('mousedown', (e) => startDrag(iframe, controls, dragBar, e));
+  controls.appendChild(dragBar);
+
+  const handle = document.createElement('div');
+  handle.className = `tlt-resize-handle tlt-resize-${OPPOSITE[activeCorner]}`;
+  handle.addEventListener('mousedown', (e) => startResize(iframe, controls, e));
+  controls.appendChild(handle);
+
+  document.body.appendChild(controls);
+}
+
+function startDrag(
+  iframe: HTMLIFrameElement,
+  controls: HTMLElement,
+  dragBar: HTMLElement,
+  e: MouseEvent,
+): void {
+  e.preventDefault();
+  dragBar.classList.add('dragging');
+
+  const capture = document.createElement('div');
+  capture.style.cssText = 'position:fixed;inset:0;z-index:999999;cursor:grabbing';
+  document.body.appendChild(capture);
+
+  const rect = iframe.getBoundingClientRect();
+  let x = rect.left;
+  let y = rect.top;
+
+  function freePos(el: HTMLElement): void {
+    el.style.top = y + 'px';
+    el.style.bottom = 'auto';
+    el.style.left = x + 'px';
+    el.style.right = 'auto';
+    el.style.width = activeWidth + 'px';
+    el.style.height = activeHeight + 'px';
+  }
+
+  freePos(iframe);
+  freePos(controls);
+
+  const originX = e.clientX - x;
+  const originY = e.clientY - y;
+
+  function onMove(ev: MouseEvent): void {
+    x = Math.max(0, Math.min(window.innerWidth - activeWidth, ev.clientX - originX));
+    y = Math.max(0, Math.min(window.innerHeight - activeHeight, ev.clientY - originY));
+    freePos(iframe);
+    freePos(controls);
+  }
+
+  function onUp(): void {
+    capture.remove();
+    dragBar.classList.remove('dragging');
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+
+    // Snap to the quadrant the player centre landed in.
+    const cx = x + activeWidth / 2;
+    const cy = y + activeHeight / 2;
+    activeCorner = ((cy < window.innerHeight / 2 ? 't' : 'b') +
+      (cx < window.innerWidth / 2 ? 'l' : 'r')) as Corner;
+
+    positionEl(iframe);
+    stickyPlayerCorner.setValue(activeCorner);
+    buildControls(iframe);
+  }
+
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+}
+
+function startResize(iframe: HTMLIFrameElement, controls: HTMLElement, e: MouseEvent): void {
+  e.preventDefault();
+  const startX = e.clientX;
+  const startY = e.clientY;
+  const startW = activeWidth;
+  const startH = activeHeight;
+  const ratio = startW / startH;
+  const isRight = activeCorner[1] === 'r';
+  const isTop = activeCorner[0] === 't';
+  const cursor = isRight === isTop ? 'nwse-resize' : 'nesw-resize';
+
+  // Full-screen capture div prevents the cross-origin iframe from swallowing
+  // mousemove events when the cursor moves inside the embed during resize.
+  const capture = document.createElement('div');
+  capture.style.cssText = `position:fixed;inset:0;z-index:999999;cursor:${cursor}`;
+  document.body.appendChild(capture);
+
+  function onMove(ev: MouseEvent): void {
+    const dx = isRight ? startX - ev.clientX : ev.clientX - startX;
+    const dy = isTop ? ev.clientY - startY : startY - ev.clientY;
+    activeWidth = Math.max(240, startW + (dx + dy) / 2);
+    activeHeight = Math.round(activeWidth / ratio);
+    positionEl(iframe);
+    positionEl(controls);
+  }
+
+  function onUp(): void {
+    capture.remove();
+    stickyPlayerSize.setValue({ width: activeWidth, height: activeHeight });
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+  }
+
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
 }
 
 function startStickyYoutubeObserver(ctx: ContentScriptContext, isEnabled: () => boolean): void {

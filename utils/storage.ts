@@ -18,6 +18,18 @@ export const stickyYoutubeEnabled = storage.defineItem<boolean>('local:stickyYou
   fallback: true,
 });
 
+/** Last corner the sticky player was dragged to */
+export const stickyPlayerCorner = storage.defineItem<'tr' | 'tl' | 'br' | 'bl'>(
+  'local:stickyPlayerCorner',
+  { fallback: 'tr' },
+);
+
+/** Last size the sticky player was resized to */
+export const stickyPlayerSize = storage.defineItem<{ width: number; height: number }>(
+  'local:stickyPlayerSize',
+  { fallback: { width: 320, height: 180 } },
+);
+
 /**
  * Cache of YouTube video ID → matched tracklist URL (or null if searched and not found).
  * undefined/missing key = not yet searched.

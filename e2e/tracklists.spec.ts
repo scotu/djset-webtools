@@ -108,6 +108,9 @@ test.describe('sticky youtube player', () => {
     await page.waitForTimeout(500);
 
     await expect(page.locator('iframe.tlt-sticky-iframe')).toBeVisible();
+    await expect(page.locator('#tlt-sticky-controls')).toBeAttached();
+    await expect(page.locator('#tlt-sticky-drag-bar')).toBeAttached();
+    await expect(page.locator('.tlt-resize-handle')).toBeAttached();
   });
 
   test('sticky class is removed when scrolling back up', async ({ context }) => {
@@ -127,6 +130,43 @@ test.describe('sticky youtube player', () => {
     await page.waitForTimeout(500);
 
     await expect(page.locator('iframe.tlt-sticky-iframe')).toHaveCount(0);
+  });
+
+  test('teardown when toggled off while active', async ({ context, extensionId }) => {
+    const page = await context.newPage();
+
+    await page.route(TRACKLIST_URL, (route) =>
+      route.fulfill({ contentType: 'text/html', body: MOCK_HTML_WITH_YOUTUBE }),
+    );
+
+    await page.goto(TRACKLIST_URL);
+    await page.waitForSelector('iframe[src*="youtube"][src*="/embed/"]');
+
+    // Activate sticky
+    await page.evaluate(() => window.scrollTo({ top: 9999, behavior: 'instant' }));
+    await page.waitForSelector('iframe.tlt-sticky-iframe');
+
+    // Disable the feature via the options page while the sticky is live
+    const optionsPage = await context.newPage();
+    await optionsPage.goto(`chrome-extension://${extensionId}/options.html`);
+    const input = optionsPage.locator('#sticky-youtube');
+    if (await input.isChecked()) {
+      await optionsPage.locator('label:has(#sticky-youtube) .toggle-track').click();
+    }
+    await optionsPage.close();
+
+    // Storage change propagates to the content script via watch()
+    await page.waitForTimeout(500);
+    await expect(page.locator('iframe.tlt-sticky-iframe')).toHaveCount(0);
+    await expect(page.locator('#tlt-sticky-controls')).toHaveCount(0);
+
+    // Restore
+    const restorePage = await context.newPage();
+    await restorePage.goto(`chrome-extension://${extensionId}/options.html`);
+    if (!(await restorePage.locator('#sticky-youtube').isChecked())) {
+      await restorePage.locator('label:has(#sticky-youtube) .toggle-track').click();
+    }
+    await restorePage.close();
   });
 
   test('sticky does not activate when feature is disabled', async ({ context, extensionId }) => {
