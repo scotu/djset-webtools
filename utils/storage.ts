@@ -13,6 +13,11 @@ export const youtubeIndicatorEnabled = storage.defineItem<boolean>(
   },
 );
 
+/** Feature toggle: sticky YouTube embed on 1001tracklists tracklist pages */
+export const stickyYoutubeEnabled = storage.defineItem<boolean>('local:stickyYoutubeEnabled', {
+  fallback: true,
+});
+
 /**
  * Cache of YouTube video ID → matched tracklist URL (or null if searched and not found).
  * undefined/missing key = not yet searched.

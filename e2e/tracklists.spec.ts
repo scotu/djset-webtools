@@ -10,17 +10,30 @@ import { test, expect } from './fixtures';
 const TRACKLIST_URL =
   'https://www.1001tracklists.com/tracklist/21ssvh4t/boys-noize-vtss-arc-2025.html';
 
+const TRACK_ROWS = Array.from(
+  { length: 40 },
+  (_, i) =>
+    `<div id="tlp_${i}" class="tlpTog bItm tlpItem trRow${i}" style="height:60px;margin:2px;">Track ${i + 1}</div>`,
+).join('\n');
+
 // Minimal mock of a 1001tracklists tracklist page.
 // 40 tall rows so the last one is well off-screen in a standard viewport.
 const MOCK_HTML = `<!doctype html>
 <html><head><title>Test Tracklist</title></head>
 <body>
   <div id="tlp">
-    ${Array.from(
-      { length: 40 },
-      (_, i) =>
-        `<div id="tlp_${i}" class="tlpTog bItm tlpItem trRow${i}" style="height:60px;margin:2px;">Track ${i + 1}</div>`,
-    ).join('\n')}
+    ${TRACK_ROWS}
+  </div>
+</body></html>`;
+
+// Same mock but with a YouTube embed above the tracklist.
+const MOCK_HTML_WITH_YOUTUBE = `<!doctype html>
+<html><head><title>Test Tracklist</title></head>
+<body>
+  <iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ?enablejsapi=1"
+    width="640" height="360" style="display:block;margin-bottom:8px;"></iframe>
+  <div id="tlp">
+    ${TRACK_ROWS}
   </div>
 </body></html>`;
 
@@ -80,6 +93,75 @@ test.describe('auto-scroll', () => {
   });
 });
 
+test.describe('sticky youtube player', () => {
+  test('overlay appears after scrolling past the iframe', async ({ context }) => {
+    const page = await context.newPage();
+
+    await page.route(TRACKLIST_URL, (route) =>
+      route.fulfill({ contentType: 'text/html', body: MOCK_HTML_WITH_YOUTUBE }),
+    );
+
+    await page.goto(TRACKLIST_URL);
+    await page.waitForSelector('iframe[src*="youtube"][src*="/embed/"]');
+
+    await page.evaluate(() => window.scrollTo({ top: 9999, behavior: 'instant' }));
+    await page.waitForTimeout(500);
+
+    await expect(page.locator('iframe.tlt-sticky-iframe')).toBeVisible();
+  });
+
+  test('sticky class is removed when scrolling back up', async ({ context }) => {
+    const page = await context.newPage();
+
+    await page.route(TRACKLIST_URL, (route) =>
+      route.fulfill({ contentType: 'text/html', body: MOCK_HTML_WITH_YOUTUBE }),
+    );
+
+    await page.goto(TRACKLIST_URL);
+    await page.waitForSelector('iframe[src*="youtube"][src*="/embed/"]');
+
+    await page.evaluate(() => window.scrollTo({ top: 9999, behavior: 'instant' }));
+    await page.waitForSelector('#tlt-sticky-placeholder');
+
+    await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
+    await page.waitForTimeout(500);
+
+    await expect(page.locator('iframe.tlt-sticky-iframe')).toHaveCount(0);
+  });
+
+  test('sticky does not activate when feature is disabled', async ({ context, extensionId }) => {
+    // Disable the toggle via the options page first
+    const optionsPage = await context.newPage();
+    await optionsPage.goto(`chrome-extension://${extensionId}/options.html`);
+    const toggle = optionsPage.locator('label:has(#sticky-youtube) .toggle-track');
+    const input = optionsPage.locator('#sticky-youtube');
+    if (await input.isChecked()) await toggle.click();
+    await optionsPage.close();
+
+    const page = await context.newPage();
+    await page.route(TRACKLIST_URL, (route) =>
+      route.fulfill({ contentType: 'text/html', body: MOCK_HTML_WITH_YOUTUBE }),
+    );
+
+    await page.goto(TRACKLIST_URL);
+    await page.waitForSelector('iframe[src*="youtube"][src*="/embed/"]');
+
+    await page.evaluate(() => window.scrollTo({ top: 9999, behavior: 'instant' }));
+    await page.waitForTimeout(500);
+
+    await expect(page.locator('iframe.tlt-sticky-iframe')).toHaveCount(0);
+
+    // Restore the toggle
+    const restorePage = await context.newPage();
+    await restorePage.goto(`chrome-extension://${extensionId}/options.html`);
+    const restoreInput = restorePage.locator('#sticky-youtube');
+    if (!(await restoreInput.isChecked())) {
+      await restorePage.locator('label:has(#sticky-youtube) .toggle-track').click();
+    }
+    await restorePage.close();
+  });
+});
+
 test.describe('options', () => {
   test('options page loads and has all toggles', async ({ context, extensionId }) => {
     const page = await context.newPage();
@@ -88,6 +170,7 @@ test.describe('options', () => {
     // The inputs are visually hidden (custom toggle UI) — check the visible labels
     await expect(page.locator('label[for="auto-scroll"]')).toBeVisible();
     await expect(page.locator('label[for="youtube-indicator"]')).toBeVisible();
+    await expect(page.locator('label[for="sticky-youtube"]')).toBeVisible();
     await expect(page.locator('#clear-cache')).toBeVisible();
   });
 

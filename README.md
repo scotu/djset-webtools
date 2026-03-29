@@ -16,7 +16,10 @@ When you open a YouTube video longer than 30 minutes, the extension searches 100
 ### Auto-scroll to current track *(1001tracklists)*
 The tracklist automatically scrolls to keep the currently playing track visible. Auto-scroll pauses for 3 seconds after you scroll manually, then resumes.
 
-All three features can be toggled independently from the extension's options page.
+### Sticky YouTube player *(1001tracklists)*
+When you scroll past the YouTube embed at the top of a tracklist page, it reappears as a floating player in the top-right corner of the viewport. Scroll back up to dismiss it.
+
+All features can be toggled independently from the extension's options page.
 
 ---
 
@@ -105,6 +108,13 @@ The extension icon appears in the toolbar. Open the options page from the extens
 1. On the same tracklist page with a playing set, scroll away from the current track
 2. After manual scrolling the autoscroll behavior is disabled for 3 seconds, when the track changes again after the 3 seconds, the page should smoothly scroll back to the new current track
 
+### Sticky YouTube player
+
+1. Open a tracklist page that has a YouTube embed at the top
+2. Scroll down past the video player — a small floating player should appear in the top-right corner
+3. Scroll back up — the floating player should disappear and the original embed returns to normal
+4. Disable **Sticky YouTube player** in the options page — scrolling should no longer produce the floating player
+
 ### Options page
 
 - **Chrome**: right-click the extension icon → *Options*, or go to `chrome://extensions` → Details → Extension options
@@ -150,6 +160,7 @@ The 1001tracklists features rely on the following live DOM selectors, confirmed 
 | Current track | `.cPlay` (added by site JS to `.trRowN` elements) |
 | Track item container | `.bItm` |
 | Track action links | `.iRow a`, `.iRow button` |
+| YouTube embed (tracklist page) | `iframe[src*="youtube"][src*="/embed/"]` |
 
 If 1001tracklists redesigns their site, these may need updating.
 

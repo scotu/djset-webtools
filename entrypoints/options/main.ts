@@ -1,13 +1,20 @@
-import { autoScrollEnabled, youtubeIndicatorEnabled, clearSearchCache } from '../../utils/storage';
+import {
+  autoScrollEnabled,
+  youtubeIndicatorEnabled,
+  stickyYoutubeEnabled,
+  clearSearchCache,
+} from '../../utils/storage';
 
 async function init(): Promise<void> {
-  const [scroll, indicator] = await Promise.all([
+  const [scroll, indicator, sticky] = await Promise.all([
     autoScrollEnabled.getValue(),
     youtubeIndicatorEnabled.getValue(),
+    stickyYoutubeEnabled.getValue(),
   ]);
 
   bindToggle('auto-scroll', scroll, autoScrollEnabled);
   bindToggle('youtube-indicator', indicator, youtubeIndicatorEnabled);
+  bindToggle('sticky-youtube', sticky, stickyYoutubeEnabled);
 
   document.getElementById('clear-cache')!.addEventListener('click', async () => {
     await clearSearchCache();
