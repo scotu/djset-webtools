@@ -18,7 +18,7 @@ export default defineBackground(() => {
       const html = await res.text();
       const result = parseFirstTracklist(html);
       console.log(
-        '[1001tools] query:',
+        '[djset-webtools] query:',
         data.query,
         '| status:',
         res.status,

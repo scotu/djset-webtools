@@ -1,4 +1,4 @@
-# 1001tools
+# djset-webtools
 
 A browser extension that improves the experience of listening to DJ sets on YouTube and [1001tracklists.com](https://www.1001tracklists.com).
 
@@ -127,7 +127,7 @@ Toggle each feature and verify the behaviour starts/stops immediately on the ope
 ## Project structure
 
 ```
-1001tools/
+djset-webtools/
 ├── entrypoints/
 │   ├── background.ts            # Cross-origin fetch handler (1001tl search)
 │   ├── youtube.content.ts       # YouTube: indicator injection

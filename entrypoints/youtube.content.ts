@@ -45,7 +45,7 @@ async function handleNavigation(): Promise<void> {
   if (query.length < 5) return;
 
   const url = await sendMessage('searchTracklist', { query });
-  console.log('[1001tools] youtube: videoId=%s query=%s url=%s', videoId, query, url);
+  console.log('[djset-webtools] youtube: videoId=%s query=%s url=%s', videoId, query, url);
   await setCachedResult(videoId, url);
 
   if (url) injectIndicator(url);
