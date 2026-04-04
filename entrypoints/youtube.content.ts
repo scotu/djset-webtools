@@ -3,8 +3,8 @@ import { youtubeIndicatorEnabled, getCachedResult, setCachedResult } from '../ut
 import { normaliseTitle } from '../utils/string';
 import { injectStyle, removeElement } from '../utils/dom';
 
-const INDICATOR_ID = 'tlt-indicator';
-const STYLE_ID = 'tlt-youtube-style';
+const INDICATOR_ID = 'djw-indicator';
+const STYLE_ID = 'djw-youtube-style';
 const MIN_DURATION_SECONDS = 30 * 60;
 
 export default defineContentScript({

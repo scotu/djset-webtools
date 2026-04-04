@@ -101,26 +101,26 @@ function scrollToTrack(activeItem: HTMLElement): void {
 type Corner = 'tr' | 'tl' | 'br' | 'bl';
 const OPPOSITE: Record<Corner, Corner> = { tr: 'bl', tl: 'br', br: 'tl', bl: 'tr' };
 
-const STICKY_STYLE_ID = 'tlt-sticky-yt-style';
-const STICKY_CLASS = 'tlt-sticky-iframe';
-const STICKY_PLACEHOLDER_ID = 'tlt-sticky-placeholder';
-const STICKY_SENTINEL_ID = 'tlt-sticky-sentinel';
-const STICKY_CONTROLS_ID = 'tlt-sticky-controls';
+const STICKY_STYLE_ID = 'djw-sticky-yt-style';
+const STICKY_CLASS = 'djw-sticky-iframe';
+const STICKY_PLACEHOLDER_ID = 'djw-sticky-placeholder';
+const STICKY_SENTINEL_ID = 'djw-sticky-sentinel';
+const STICKY_CONTROLS_ID = 'djw-sticky-controls';
 
 const STICKY_CSS = `
-.tlt-sticky-iframe {
+.djw-sticky-iframe {
   position: fixed !important;
   z-index: 99999 !important;
   box-shadow: 0 4px 24px rgba(0,0,0,.6) !important;
   border-radius: 6px !important;
 }
-#tlt-sticky-controls {
+#djw-sticky-controls {
   position: fixed;
   z-index: 100000;
   pointer-events: none;
   border-radius: 6px;
 }
-#tlt-sticky-drag-bar {
+#djw-sticky-drag-bar {
   position: absolute;
   top: 0; left: 0; right: 0;
   height: 22px;
@@ -134,24 +134,24 @@ const STICKY_CSS = `
   opacity: 0;
   transition: opacity 0.15s;
 }
-#tlt-sticky-drag-bar:hover, #tlt-sticky-drag-bar.dragging { opacity: 1; }
-#tlt-sticky-drag-bar.dragging { cursor: grabbing; }
-#tlt-sticky-drag-bar::after {
+#djw-sticky-drag-bar:hover, #djw-sticky-drag-bar.dragging { opacity: 1; }
+#djw-sticky-drag-bar.dragging { cursor: grabbing; }
+#djw-sticky-drag-bar::after {
   content: '';
   display: block;
   width: 24px; height: 3px;
   background: rgba(255,255,255,0.65);
   border-radius: 2px;
 }
-.tlt-resize-handle {
+.djw-resize-handle {
   position: absolute;
   pointer-events: auto;
   width: 22px; height: 22px;
   opacity: 0;
   transition: opacity 0.15s;
 }
-.tlt-resize-handle:hover { opacity: 1; }
-.tlt-resize-handle::before {
+.djw-resize-handle:hover { opacity: 1; }
+.djw-resize-handle::before {
   content: '';
   position: absolute;
   inset: 5px;
@@ -159,14 +159,14 @@ const STICKY_CSS = `
   border-style: solid;
   border-width: 0;
 }
-.tlt-resize-tl { top: 0; left: 0; cursor: nwse-resize; }
-.tlt-resize-tl::before { border-top-width: 2px; border-left-width: 2px; }
-.tlt-resize-tr { top: 0; right: 0; cursor: nesw-resize; }
-.tlt-resize-tr::before { border-top-width: 2px; border-right-width: 2px; }
-.tlt-resize-bl { bottom: 0; left: 0; cursor: nesw-resize; }
-.tlt-resize-bl::before { border-bottom-width: 2px; border-left-width: 2px; }
-.tlt-resize-br { bottom: 0; right: 0; cursor: nwse-resize; }
-.tlt-resize-br::before { border-bottom-width: 2px; border-right-width: 2px; }
+.djw-resize-tl { top: 0; left: 0; cursor: nwse-resize; }
+.djw-resize-tl::before { border-top-width: 2px; border-left-width: 2px; }
+.djw-resize-tr { top: 0; right: 0; cursor: nesw-resize; }
+.djw-resize-tr::before { border-top-width: 2px; border-right-width: 2px; }
+.djw-resize-bl { bottom: 0; left: 0; cursor: nesw-resize; }
+.djw-resize-bl::before { border-bottom-width: 2px; border-left-width: 2px; }
+.djw-resize-br { bottom: 0; right: 0; cursor: nwse-resize; }
+.djw-resize-br::before { border-bottom-width: 2px; border-right-width: 2px; }
 `;
 
 let originalIframe: HTMLIFrameElement | null = null;
@@ -218,12 +218,12 @@ function buildControls(iframe: HTMLIFrameElement): void {
   positionEl(controls);
 
   const dragBar = document.createElement('div');
-  dragBar.id = 'tlt-sticky-drag-bar';
+  dragBar.id = 'djw-sticky-drag-bar';
   dragBar.addEventListener('mousedown', (e) => startDrag(iframe, controls, dragBar, e));
   controls.appendChild(dragBar);
 
   const handle = document.createElement('div');
-  handle.className = `tlt-resize-handle tlt-resize-${OPPOSITE[activeCorner]}`;
+  handle.className = `djw-resize-handle djw-resize-${OPPOSITE[activeCorner]}`;
   handle.addEventListener('mousedown', (e) => startResize(iframe, controls, e));
   controls.appendChild(handle);
 

@@ -107,10 +107,10 @@ test.describe('sticky youtube player', () => {
     await page.evaluate(() => window.scrollTo({ top: 9999, behavior: 'instant' }));
     await page.waitForTimeout(500);
 
-    await expect(page.locator('iframe.tlt-sticky-iframe')).toBeVisible();
-    await expect(page.locator('#tlt-sticky-controls')).toBeAttached();
-    await expect(page.locator('#tlt-sticky-drag-bar')).toBeAttached();
-    await expect(page.locator('.tlt-resize-handle')).toBeAttached();
+    await expect(page.locator('iframe.djw-sticky-iframe')).toBeVisible();
+    await expect(page.locator('#djw-sticky-controls')).toBeAttached();
+    await expect(page.locator('#djw-sticky-drag-bar')).toBeAttached();
+    await expect(page.locator('.djw-resize-handle')).toBeAttached();
   });
 
   test('sticky class is removed when scrolling back up', async ({ context }) => {
@@ -124,12 +124,12 @@ test.describe('sticky youtube player', () => {
     await page.waitForSelector('iframe[src*="youtube"][src*="/embed/"]');
 
     await page.evaluate(() => window.scrollTo({ top: 9999, behavior: 'instant' }));
-    await page.waitForSelector('#tlt-sticky-placeholder');
+    await page.waitForSelector('#djw-sticky-placeholder');
 
     await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
     await page.waitForTimeout(500);
 
-    await expect(page.locator('iframe.tlt-sticky-iframe')).toHaveCount(0);
+    await expect(page.locator('iframe.djw-sticky-iframe')).toHaveCount(0);
   });
 
   test('teardown when toggled off while active', async ({ context, extensionId }) => {
@@ -144,7 +144,7 @@ test.describe('sticky youtube player', () => {
 
     // Activate sticky
     await page.evaluate(() => window.scrollTo({ top: 9999, behavior: 'instant' }));
-    await page.waitForSelector('iframe.tlt-sticky-iframe');
+    await page.waitForSelector('iframe.djw-sticky-iframe');
 
     // Disable the feature via the options page while the sticky is live
     const optionsPage = await context.newPage();
@@ -157,8 +157,8 @@ test.describe('sticky youtube player', () => {
 
     // Storage change propagates to the content script via watch()
     await page.waitForTimeout(500);
-    await expect(page.locator('iframe.tlt-sticky-iframe')).toHaveCount(0);
-    await expect(page.locator('#tlt-sticky-controls')).toHaveCount(0);
+    await expect(page.locator('iframe.djw-sticky-iframe')).toHaveCount(0);
+    await expect(page.locator('#djw-sticky-controls')).toHaveCount(0);
 
     // Restore
     const restorePage = await context.newPage();
@@ -189,7 +189,7 @@ test.describe('sticky youtube player', () => {
     await page.evaluate(() => window.scrollTo({ top: 9999, behavior: 'instant' }));
     await page.waitForTimeout(500);
 
-    await expect(page.locator('iframe.tlt-sticky-iframe')).toHaveCount(0);
+    await expect(page.locator('iframe.djw-sticky-iframe')).toHaveCount(0);
 
     // Restore the toggle
     const restorePage = await context.newPage();

@@ -19,7 +19,7 @@ test.describe('YouTube indicator', () => {
     const page = await context.newPage();
     await page.goto(SHORT_VIDEO_URL);
     await page.waitForTimeout(3000); // allow content script to run
-    const indicator = page.locator('#tlt-indicator');
+    const indicator = page.locator('#djw-indicator');
     await expect(indicator).toHaveCount(0);
   });
 
@@ -29,7 +29,7 @@ test.describe('YouTube indicator', () => {
     const page = await context.newPage();
     await page.goto(LONG_SET_URL);
     // Wait up to 10s for the indicator to appear (network request needed)
-    const indicator = page.locator('#tlt-indicator');
+    const indicator = page.locator('#djw-indicator');
     // Soft assertion — the indicator may or may not appear depending on search results
     const count = await indicator.count();
     if (count > 0) {
