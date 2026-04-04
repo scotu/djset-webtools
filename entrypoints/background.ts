@@ -1,4 +1,5 @@
 import { onMessage } from '../utils/messaging';
+import { log } from '../utils/log';
 
 export default defineBackground(() => {
   onMessage('searchTracklist', async ({ data }) => {
@@ -17,8 +18,8 @@ export default defineBackground(() => {
       if (!res.ok) return null;
       const html = await res.text();
       const result = parseFirstTracklist(html);
-      console.log(
-        '[djset-webtools] query:',
+      log(
+        'query:',
         data.query,
         '| status:',
         res.status,

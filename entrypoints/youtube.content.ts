@@ -2,6 +2,7 @@ import { sendMessage } from '../utils/messaging';
 import { youtubeIndicatorEnabled, getCachedResult, setCachedResult } from '../utils/storage';
 import { normaliseTitle } from '../utils/string';
 import { injectStyle, removeElement } from '../utils/dom';
+import { log } from '../utils/log';
 
 const INDICATOR_ID = 'djw-indicator';
 const STYLE_ID = 'djw-youtube-style';
@@ -19,20 +20,26 @@ export default defineContentScript({
 
 async function handleNavigation(): Promise<void> {
   removeElement(`#${INDICATOR_ID}`);
-  console.log('[djset-webtools] handleNavigation', location.href);
+  log('handleNavigation', location.href);
 
   const enabled = await youtubeIndicatorEnabled.getValue();
-  if (!enabled) { console.log('[djset-webtools] disabled'); return; }
+  if (!enabled) {
+    log('disabled');
+    return;
+  }
 
   const videoId = new URLSearchParams(location.search).get('v');
-  if (!videoId) { console.log('[djset-webtools] no videoId'); return; }
+  if (!videoId) {
+    log('no videoId');
+    return;
+  }
 
   const duration = await waitForVideoDuration();
-  console.log('[djset-webtools] duration:', duration, 'min required:', MIN_DURATION_SECONDS);
+  log('duration:', duration, 'min required:', MIN_DURATION_SECONDS);
   if (duration === null || duration < MIN_DURATION_SECONDS) return;
 
   const cached = await getCachedResult(videoId);
-  console.log('[djset-webtools] cached:', cached);
+  log('cached:', cached);
   if (cached === null) return; // searched before, no result
 
   if (typeof cached === 'string') {
@@ -42,15 +49,15 @@ async function handleNavigation(): Promise<void> {
 
   // Not yet searched — fetch from background
   const title = getVideoTitle();
-  console.log('[djset-webtools] title:', title);
+  log('title:', title);
   if (!title) return;
 
   const query = normaliseTitle(title);
-  console.log('[djset-webtools] query:', query);
+  log('query:', query);
   if (query.length < 5) return;
 
   const url = await sendMessage('searchTracklist', { query });
-  console.log('[djset-webtools] youtube: videoId=%s query=%s url=%s', videoId, query, url);
+  log('result: videoId=%s query=%s url=%s', videoId, query, url);
   await setCachedResult(videoId, url);
 
   if (url) injectIndicator(url);
