@@ -1,7 +1,45 @@
 import { onMessage } from '../utils/messaging';
 import { log } from '../utils/log';
 
+const ICONS = {
+  dark: {
+    16: '/icon/16-dark.png',
+    32: '/icon/32-dark.png',
+    48: '/icon/48-dark.png',
+    128: '/icon/128-dark.png',
+  },
+  light: {
+    16: '/icon/16-light.png',
+    32: '/icon/32-light.png',
+    48: '/icon/48-light.png',
+    128: '/icon/128-light.png',
+  },
+};
+
 export default defineBackground(() => {
+  // browser.action is MV3 only; Firefox MV2 exposes browser.browserAction.
+  const actionApi = browser.action ?? (browser as any).browserAction;
+
+  // Chrome MV3: service workers have no matchMedia, use the action API instead.
+  // colorScheme === 'light' is the only explicitly light state; 'normal' follows
+  // the system theme and Chrome reports it even when the toolbar is visually dark.
+  const chromeAction = (globalThis as any).chrome?.action;
+  if (chromeAction?.getUserSettings) {
+    const update = async () => {
+      const { colorScheme } = await chromeAction.getUserSettings();
+      actionApi.setIcon({ path: colorScheme === 'light' ? ICONS.dark : ICONS.light });
+    };
+    update();
+    chromeAction.onUserSettingsChanged?.addListener(update);
+  }
+  // Firefox MV2: background pages have matchMedia.
+  else if (typeof matchMedia !== 'undefined') {
+    const mq = matchMedia('(prefers-color-scheme: dark)');
+    const update = (dark: boolean) => actionApi.setIcon({ path: dark ? ICONS.light : ICONS.dark });
+    update(mq.matches);
+    mq.addEventListener('change', (e) => update(e.matches));
+  }
+
   onMessage('searchTracklist', async ({ data }) => {
     if (data.query.trim().length < 5) return null;
 

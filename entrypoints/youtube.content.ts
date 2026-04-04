@@ -143,7 +143,7 @@ function injectIndicator(tracklistUrl: string): void {
   anchor.rel = 'noopener noreferrer';
 
   const img = document.createElement('img');
-  img.src = browser.runtime.getURL('/icon/16.png');
+  img.src = browser.runtime.getURL('/icon/16-light.png');
   img.alt = '';
   anchor.appendChild(img);
   anchor.appendChild(document.createTextNode('Tracklist found on 1001tracklists'));
