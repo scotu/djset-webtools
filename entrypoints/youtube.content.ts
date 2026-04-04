@@ -19,17 +19,20 @@ export default defineContentScript({
 
 async function handleNavigation(): Promise<void> {
   removeElement(`#${INDICATOR_ID}`);
+  console.log('[djset-webtools] handleNavigation', location.href);
 
   const enabled = await youtubeIndicatorEnabled.getValue();
-  if (!enabled) return;
+  if (!enabled) { console.log('[djset-webtools] disabled'); return; }
 
   const videoId = new URLSearchParams(location.search).get('v');
-  if (!videoId) return;
+  if (!videoId) { console.log('[djset-webtools] no videoId'); return; }
 
   const duration = await waitForVideoDuration();
+  console.log('[djset-webtools] duration:', duration, 'min required:', MIN_DURATION_SECONDS);
   if (duration === null || duration < MIN_DURATION_SECONDS) return;
 
   const cached = await getCachedResult(videoId);
+  console.log('[djset-webtools] cached:', cached);
   if (cached === null) return; // searched before, no result
 
   if (typeof cached === 'string') {
@@ -39,9 +42,11 @@ async function handleNavigation(): Promise<void> {
 
   // Not yet searched — fetch from background
   const title = getVideoTitle();
+  console.log('[djset-webtools] title:', title);
   if (!title) return;
 
   const query = normaliseTitle(title);
+  console.log('[djset-webtools] query:', query);
   if (query.length < 5) return;
 
   const url = await sendMessage('searchTracklist', { query });
@@ -54,12 +59,19 @@ async function handleNavigation(): Promise<void> {
 function getVideoDuration(): number | null {
   try {
     const raw = (window as any).ytInitialPlayerResponse?.videoDetails?.lengthSeconds;
-    if (raw == null) return null;
-    const seconds = parseInt(String(raw), 10);
-    return isNaN(seconds) ? null : seconds;
+    if (raw != null) {
+      const seconds = parseInt(String(raw), 10);
+      if (!isNaN(seconds)) return seconds;
+    }
   } catch {
-    return null;
+    // fall through
   }
+  // Fallback: read from the HTML5 video element (reliable once player has loaded)
+  const videoEl = document.querySelector<HTMLVideoElement>('video');
+  if (videoEl && isFinite(videoEl.duration) && videoEl.duration > 0) {
+    return Math.round(videoEl.duration);
+  }
+  return null;
 }
 
 // ytInitialPlayerResponse may not be populated yet at document_idle on direct
