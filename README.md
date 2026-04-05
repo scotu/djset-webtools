@@ -71,6 +71,38 @@ pnpm build && pnpm test:e2e
 
 ---
 
+## Creating a release
+
+1. **Bump the version** in `package.json` (follows semver, e.g. `0.2.0` → `0.3.0`).
+
+2. **Run the full test suite** to confirm nothing is broken:
+
+   ```bash
+   pnpm compile
+   pnpm test
+   pnpm build && pnpm test:e2e
+   ```
+
+3. **Package both browsers:**
+
+   ```bash
+   pnpm zip:all
+   ```
+
+   This produces three files in `.output/`:
+
+   | File | Purpose |
+   |---|---|
+   | `djset-webtools-<version>-chrome.zip` | Upload to Chrome Web Store |
+   | `djset-webtools-<version>-firefox.zip` | Upload to Firefox Add-on Hub (AMO) |
+   | `djset-webtools-<version>-sources.zip` | Source code archive required by AMO |
+
+4. **Chrome Web Store** — go to the [Chrome Developer Dashboard](https://chrome.google.com/webstore/devconsole), select the extension, upload the chrome zip under *Package*, and submit for review.
+
+5. **Firefox AMO** — go to [addons.mozilla.org/developers](https://addons.mozilla.org/developers/), select the extension, upload the firefox zip, and attach the sources zip when prompted (AMO requires source submission for minified extensions).
+
+---
+
 ## Loading the extension in your browser
 
 ### Chrome / Chromium
