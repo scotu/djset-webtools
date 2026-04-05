@@ -2,7 +2,7 @@
   "name": "djset-webtools",
   "description": "YouTube ↔ 1001tracklists integration for DJ set listeners",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "scripts": {
     "dev": "wxt",
