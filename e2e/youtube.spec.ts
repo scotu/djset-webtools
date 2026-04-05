@@ -35,6 +35,19 @@ const MOCK_SEARCH_FOUND_HTML = `<html><body>
 
 const MOCK_SEARCH_NOT_FOUND_HTML = `<html><body><p>No results found.</p></body></html>`;
 
+// Same page but with #movie_player carrying the ad-showing class YouTube uses during video ads
+const MOCK_YT_HTML_WITH_AD = `<!doctype html>
+<html><head><title>Test DJ Set - YouTube</title></head>
+<body>
+<div id="movie_player" class="ad-showing">
+  <div class="ytp-ad-player-overlay"></div>
+</div>
+<h1 class="ytd-watch-metadata">
+  <yt-formatted-string>Test Artist - Test DJ Set @ Test Festival 2025</yt-formatted-string>
+</h1>
+<video data-duration="5400"></video>
+</body></html>`;
+
 test.describe('YouTube indicator', () => {
   test('indicator is not shown on a short video', async ({ context }) => {
     const page = await context.newPage();
@@ -180,5 +193,70 @@ test.describe('indicator states (intercepted)', () => {
       await restorePage.locator('label:has(#youtube-indicator) .toggle-track').click();
     }
     await restorePage.close();
+  });
+});
+
+test.describe('ad handling', () => {
+  test('indicator does not appear while an ad is playing', async ({ context }) => {
+    await context.route(SEARCH_URL, (route) =>
+      route.fulfill({ contentType: 'text/html', body: MOCK_SEARCH_FOUND_HTML }),
+    );
+
+    const page = await context.newPage();
+    await page.route(MOCK_YT_URL, (route) =>
+      route.fulfill({ contentType: 'text/html', body: MOCK_YT_HTML_WITH_AD }),
+    );
+    await page.goto(MOCK_YT_URL);
+
+    // Content script is blocked inside waitForAdToEnd(); no indicator should appear
+    await page.waitForTimeout(1500);
+    await expect(page.locator('#djw-indicator')).toHaveCount(0);
+  });
+
+  test('indicator appears once the ad finishes', async ({ context }) => {
+    await context.route(SEARCH_URL, (route) =>
+      route.fulfill({ contentType: 'text/html', body: MOCK_SEARCH_FOUND_HTML }),
+    );
+
+    const page = await context.newPage();
+    await page.route(MOCK_YT_URL, (route) =>
+      route.fulfill({ contentType: 'text/html', body: MOCK_YT_HTML_WITH_AD }),
+    );
+    await page.goto(MOCK_YT_URL);
+
+    // Confirm the content script is waiting (no indicator yet)
+    await page.waitForTimeout(500);
+    await expect(page.locator('#djw-indicator')).toHaveCount(0);
+
+    // Simulate the ad ending — YouTube removes the ad-showing class
+    await page.evaluate(() =>
+      document.getElementById('movie_player')?.classList.remove('ad-showing'),
+    );
+
+    await expect(page.locator('#djw-indicator.djw-found')).toBeVisible({ timeout: 8000 });
+  });
+
+  test('indicator appears after consecutive ads finish', async ({ context }) => {
+    await context.route(SEARCH_URL, (route) =>
+      route.fulfill({ contentType: 'text/html', body: MOCK_SEARCH_FOUND_HTML }),
+    );
+
+    const page = await context.newPage();
+    await page.route(MOCK_YT_URL, (route) =>
+      route.fulfill({ contentType: 'text/html', body: MOCK_YT_HTML_WITH_AD }),
+    );
+    await page.goto(MOCK_YT_URL);
+
+    await page.waitForTimeout(500);
+
+    // First ad ends, second starts within the 300ms re-check window, then second ends
+    await page.evaluate(() => {
+      const player = document.getElementById('movie_player')!;
+      player.classList.remove('ad-showing'); // first ad ends
+      setTimeout(() => player.classList.add('ad-showing'), 100); // second ad starts (< 300ms pause)
+      setTimeout(() => player.classList.remove('ad-showing'), 700); // second ad ends
+    });
+
+    await expect(page.locator('#djw-indicator.djw-found')).toBeVisible({ timeout: 8000 });
   });
 });

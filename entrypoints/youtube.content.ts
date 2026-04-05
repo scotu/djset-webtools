@@ -41,6 +41,8 @@ async function handleNavigation(): Promise<void> {
     return;
   }
 
+  await waitForAdToEnd();
+
   const duration = await waitForVideoDuration();
   log('duration:', duration, 'min required:', MIN_DURATION_SECONDS);
   if (duration === null || duration < MIN_DURATION_SECONDS) return;
@@ -115,6 +117,41 @@ async function waitForVideoDuration(maxWaitMs = 3000): Promise<number | null> {
     await new Promise((r) => setTimeout(r, 200));
   }
   return null;
+}
+
+function isAdPlaying(): boolean {
+  return (
+    document.getElementById('movie_player')?.classList.contains('ad-showing') === true ||
+    !!document.querySelector('.ytp-ad-player-overlay')
+  );
+}
+
+/**
+ * Waits until no ad is playing, handling consecutive ad sequences.
+ * Uses a MutationObserver on #movie_player's class attribute so there is no busy-polling.
+ */
+async function waitForAdToEnd(maxWaitMs = 5 * 60 * 1000): Promise<void> {
+  const deadline = Date.now() + maxWaitMs;
+  while (Date.now() < deadline) {
+    const player = document.getElementById('movie_player');
+    if (!player?.classList.contains('ad-showing')) break;
+
+    log('ad playing, waiting for it to end...');
+    await new Promise<void>((resolve) => {
+      const remaining = deadline - Date.now();
+      const timer = setTimeout(resolve, remaining);
+      const obs = new MutationObserver(() => {
+        if (!player.classList.contains('ad-showing')) {
+          obs.disconnect();
+          clearTimeout(timer);
+          resolve();
+        }
+      });
+      obs.observe(player, { attributes: true, attributeFilter: ['class'] });
+    });
+    // Brief pause so YouTube can add the next ad's class if ads are back-to-back
+    await new Promise((r) => setTimeout(r, 300));
+  }
 }
 
 function getVideoTitle(): string | null {
