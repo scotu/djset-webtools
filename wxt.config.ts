@@ -36,6 +36,7 @@ export default defineConfig({
     ...(browser === 'firefox' && {
       browser_specific_settings: {
         gecko: {
+          id: '@djw.smol.tech',
           // The extension sends the normalised YouTube video title to 1001tracklists.com
           // to look up a matching tracklist — this constitutes browsingActivity under the
           // Firefox data taxonomy (information about which videos/pages the user views).
