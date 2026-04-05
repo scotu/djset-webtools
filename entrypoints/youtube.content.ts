@@ -1,5 +1,10 @@
 import { sendMessage } from '../utils/messaging';
-import { youtubeIndicatorEnabled, getCachedResult, setCachedResult } from '../utils/storage';
+import {
+  youtubeIndicatorEnabled,
+  getCachedResult,
+  setCachedResult,
+  deleteCachedResult,
+} from '../utils/storage';
 import { normaliseTitle } from '../utils/string';
 import { injectStyle, removeElement } from '../utils/dom';
 import { log } from '../utils/log';
@@ -7,6 +12,8 @@ import { log } from '../utils/log';
 const INDICATOR_ID = 'djw-indicator';
 const STYLE_ID = 'djw-youtube-style';
 const MIN_DURATION_SECONDS = 30 * 60;
+
+const SEARCH_BASE = 'https://www.1001tracklists.com/search/index.php';
 
 export default defineContentScript({
   matches: ['*://www.youtube.com/watch*'],
@@ -38,30 +45,47 @@ async function handleNavigation(): Promise<void> {
   log('duration:', duration, 'min required:', MIN_DURATION_SECONDS);
   if (duration === null || duration < MIN_DURATION_SECONDS) return;
 
-  const cached = await getCachedResult(videoId);
-  log('cached:', cached);
-  if (cached === null) return; // searched before, no result
-
-  if (typeof cached === 'string') {
-    injectIndicator(cached);
-    return;
-  }
-
-  // Not yet searched — fetch from background
+  // Resolve query early — needed for all states including not-found.
   const title = getVideoTitle();
   log('title:', title);
   if (!title) return;
-
   const query = normaliseTitle(title);
   log('query:', query);
   if (query.length < 5) return;
 
+  const cached = await getCachedResult(videoId);
+  log('cached:', cached);
+
+  if (cached === null) {
+    injectNotFoundIndicator(query, videoId);
+    return;
+  }
+
+  if (typeof cached === 'string') {
+    injectFoundIndicator(cached);
+    return;
+  }
+
+  // Not yet searched — show loading state then fetch.
+  await searchAndDisplay(query, videoId);
+}
+
+async function searchAndDisplay(query: string, videoId: string): Promise<void> {
+  injectSearchingIndicator();
   const url = await sendMessage('searchTracklist', { query });
   log('result: videoId=%s query=%s url=%s', videoId, query, url);
   await setCachedResult(videoId, url);
-
-  if (url) injectIndicator(url);
+  removeElement(`#${INDICATOR_ID}`);
+  if (url) {
+    injectFoundIndicator(url);
+  } else {
+    injectNotFoundIndicator(query, videoId);
+  }
 }
+
+// ---------------------------------------------------------------------------
+// Duration helpers
+// ---------------------------------------------------------------------------
 
 function getVideoDuration(): number | null {
   try {
@@ -73,16 +97,16 @@ function getVideoDuration(): number | null {
   } catch {
     // fall through
   }
-  // Fallback: read from the HTML5 video element (reliable once player has loaded)
   const videoEl = document.querySelector<HTMLVideoElement>('video');
-  if (videoEl && isFinite(videoEl.duration) && videoEl.duration > 0) {
-    return Math.round(videoEl.duration);
+  if (videoEl) {
+    // data-duration is a test-only hook; never present on real YouTube pages
+    const testDuration = videoEl.dataset.duration ? parseInt(videoEl.dataset.duration, 10) : NaN;
+    if (!isNaN(testDuration) && testDuration > 0) return testDuration;
+    if (isFinite(videoEl.duration) && videoEl.duration > 0) return Math.round(videoEl.duration);
   }
   return null;
 }
 
-// ytInitialPlayerResponse may not be populated yet at document_idle on direct
-// page loads. Poll briefly before giving up.
 async function waitForVideoDuration(maxWaitMs = 3000): Promise<number | null> {
   const deadline = Date.now() + maxWaitMs;
   while (Date.now() < deadline) {
@@ -107,7 +131,11 @@ function getVideoTitle(): string | null {
   );
 }
 
-function injectIndicator(tracklistUrl: string): void {
+// ---------------------------------------------------------------------------
+// Indicator rendering
+// ---------------------------------------------------------------------------
+
+function ensureStyle(): void {
   injectStyle(
     STYLE_ID,
     `
@@ -121,36 +149,109 @@ function injectIndicator(tracklistUrl: string): void {
       background: #1a1a2e;
       color: #e0e0e0;
       font-size: 13px;
-      text-decoration: none;
       font-family: sans-serif;
       line-height: 1.4;
-    }
-    #${INDICATOR_ID}:hover {
-      background: #16213e;
-      color: #fff;
+      text-decoration: none;
     }
     #${INDICATOR_ID} img {
       width: 16px;
       height: 16px;
+      flex-shrink: 0;
+    }
+    #${INDICATOR_ID}.djw-found:hover {
+      background: #16213e;
+      color: #fff;
+    }
+    #${INDICATOR_ID}.djw-searching {
+      opacity: 0.6;
+    }
+    #${INDICATOR_ID}.djw-not-found {
+      gap: 8px;
+    }
+    .djw-action {
+      background: rgba(255,255,255,0.1);
+      border: none;
+      color: #bbb;
+      font-size: 12px;
+      padding: 2px 7px;
+      border-radius: 3px;
+      cursor: pointer;
+      text-decoration: none;
+      font-family: sans-serif;
+      line-height: 1.4;
+    }
+    .djw-action:hover {
+      background: rgba(255,255,255,0.2);
+      color: #fff;
     }
   `,
   );
+}
 
-  const anchor = document.createElement('a');
-  anchor.id = INDICATOR_ID;
-  anchor.href = tracklistUrl;
-  anchor.target = '_blank';
-  anchor.rel = 'noopener noreferrer';
-
+function makeIcon(): HTMLImageElement {
   const img = document.createElement('img');
   img.src = browser.runtime.getURL('/icon/16-light.png');
   img.alt = '';
-  anchor.appendChild(img);
-  anchor.appendChild(document.createTextNode('Tracklist found on 1001tracklists'));
+  return img;
+}
 
-  // Insert below the video title
+function insertBelowTitle(el: HTMLElement): void {
   const titleEl = document.querySelector('h1.ytd-watch-metadata');
   if (titleEl?.parentElement) {
-    titleEl.parentElement.insertBefore(anchor, titleEl.nextSibling);
+    titleEl.parentElement.insertBefore(el, titleEl.nextSibling);
   }
+}
+
+function injectSearchingIndicator(): void {
+  ensureStyle();
+  const el = document.createElement('div');
+  el.id = INDICATOR_ID;
+  el.className = 'djw-searching';
+  el.appendChild(makeIcon());
+  el.appendChild(document.createTextNode('Searching 1001tracklists…'));
+  insertBelowTitle(el);
+}
+
+function injectFoundIndicator(tracklistUrl: string): void {
+  ensureStyle();
+  const anchor = document.createElement('a');
+  anchor.id = INDICATOR_ID;
+  anchor.className = 'djw-found';
+  anchor.href = tracklistUrl;
+  anchor.target = '_blank';
+  anchor.rel = 'noopener noreferrer';
+  anchor.appendChild(makeIcon());
+  anchor.appendChild(document.createTextNode('Tracklist found on 1001tracklists'));
+  insertBelowTitle(anchor);
+}
+
+function injectNotFoundIndicator(query: string, videoId: string): void {
+  ensureStyle();
+
+  const el = document.createElement('div');
+  el.id = INDICATOR_ID;
+  el.className = 'djw-not-found';
+  el.appendChild(makeIcon());
+  el.appendChild(document.createTextNode('No tracklist found'));
+
+  const retryBtn = document.createElement('button');
+  retryBtn.className = 'djw-action';
+  retryBtn.textContent = '↺ Retry';
+  retryBtn.addEventListener('click', async () => {
+    removeElement(`#${INDICATOR_ID}`);
+    await deleteCachedResult(videoId);
+    await searchAndDisplay(query, videoId);
+  });
+  el.appendChild(retryBtn);
+
+  const searchUrl = `${SEARCH_BASE}?main_search=${encodeURIComponent(query)}&search_selection=9`;
+  const searchLink = document.createElement('a');
+  searchLink.className = 'djw-action';
+  searchLink.href = searchUrl;
+  searchLink.target = '_blank';
+  searchLink.rel = 'noopener noreferrer';
+  searchLink.textContent = '🔍 Search';
+  el.appendChild(searchLink);
+
+  insertBelowTitle(el);
 }

@@ -58,6 +58,12 @@ export async function setCachedResult(videoId: string, url: string | null): Prom
   await searchCache.setValue(cache);
 }
 
+export async function deleteCachedResult(videoId: string): Promise<void> {
+  const cache = await searchCache.getValue();
+  delete cache[videoId];
+  await searchCache.setValue(cache);
+}
+
 export async function clearSearchCache(): Promise<void> {
   await searchCache.setValue({});
 }

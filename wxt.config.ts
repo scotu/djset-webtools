@@ -19,6 +19,12 @@ export default defineConfig({
       96: 'icon/96-dark.png',
       128: 'icon/128-dark.png',
     },
+    web_accessible_resources: [
+      {
+        resources: ['icon/*'],
+        matches: ['https://www.youtube.com/*'],
+      },
+    ],
     action: {
       default_icon: {
         16: 'icon/16-dark.png',
