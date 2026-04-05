@@ -6,7 +6,7 @@ export default defineConfig({
       sourcemap: mode === 'development',
     },
   }),
-  manifest: {
+  manifest: ({ browser }) => ({
     name: 'djset-webtools',
     description: 'YouTube ↔ 1001tracklists integration for DJ set listeners',
     permissions: ['storage'],
@@ -33,5 +33,17 @@ export default defineConfig({
         128: 'icon/128-dark.png',
       },
     },
-  },
+    ...(browser === 'firefox' && {
+      browser_specific_settings: {
+        gecko: {
+          // The extension sends the normalised YouTube video title to 1001tracklists.com
+          // to look up a matching tracklist — this constitutes browsingActivity under the
+          // Firefox data taxonomy (information about which videos/pages the user views).
+          data_collection_permissions: {
+            required: ['browsingActivity'],
+          },
+        },
+      },
+    }),
+  }),
 });
