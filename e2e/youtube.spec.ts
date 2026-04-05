@@ -7,7 +7,23 @@
  *
  * Run with: pnpm test:e2e
  */
+import type { Page } from '@playwright/test';
 import { test, expect } from './fixtures';
+
+/** Start the mock video element playing via a 1×1 canvas stream (no camera needed). */
+async function startVideoPlaying(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const video = document.querySelector<HTMLVideoElement>('video')!;
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 1;
+    video.srcObject = canvas.captureStream(30);
+    void video.play(); // don't return — page.evaluate must not await the play Promise
+  });
+  // Wait until the native paused property is false (visible to all worlds via C++ layer)
+  await page.waitForFunction(() => !(document.querySelector('video') as HTMLVideoElement).paused, {
+    timeout: 3000,
+  });
+}
 
 // Boys Noize b2b VTSS @ ARC Music Festival 2025 (89 min) — confirmed match on 1001tracklists
 const LONG_SET_URL = 'https://www.youtube.com/watch?v=_jysvzxpb0Q';
@@ -312,5 +328,84 @@ test.describe('ad handling', () => {
 
     await expect(page2.locator('#djw-indicator.djw-not-found')).toBeVisible({ timeout: 5000 });
     await expect(page2.locator('#djw-indicator.djw-ad')).toHaveCount(0);
+  });
+});
+
+test.describe('pause on navigation', () => {
+  test('clicking found indicator pauses a playing video', async ({ context }) => {
+    await context.route(SEARCH_URL, (route) =>
+      route.fulfill({ contentType: 'text/html', body: MOCK_SEARCH_FOUND_HTML }),
+    );
+
+    const page = await context.newPage();
+    await page.route(MOCK_YT_URL, (route) =>
+      route.fulfill({ contentType: 'text/html', body: MOCK_YT_HTML }),
+    );
+    await page.goto(MOCK_YT_URL);
+    await page.waitForSelector('#djw-indicator.djw-found');
+
+    await startVideoPlaying(page);
+    expect(await page.evaluate(() => document.querySelector('video')!.paused)).toBe(false);
+
+    const [newTab] = await Promise.all([
+      context.waitForEvent('page'),
+      page.locator('#djw-indicator').click(),
+    ]);
+    await newTab.close();
+
+    expect(await page.evaluate(() => document.querySelector('video')!.paused)).toBe(true);
+  });
+
+  test('clicking search link in not-found indicator pauses a playing video', async ({
+    context,
+  }) => {
+    await context.route(SEARCH_URL, (route) =>
+      route.fulfill({ contentType: 'text/html', body: MOCK_SEARCH_NOT_FOUND_HTML }),
+    );
+
+    const page = await context.newPage();
+    await page.route(MOCK_YT_URL, (route) =>
+      route.fulfill({ contentType: 'text/html', body: MOCK_YT_HTML }),
+    );
+    await page.goto(MOCK_YT_URL);
+    await page.waitForSelector('#djw-indicator.djw-not-found');
+
+    await startVideoPlaying(page);
+    expect(await page.evaluate(() => document.querySelector('video')!.paused)).toBe(false);
+
+    const [newTab] = await Promise.all([
+      context.waitForEvent('page'),
+      page.locator('#djw-indicator a.djw-action').click(),
+    ]);
+    await newTab.close();
+
+    expect(await page.evaluate(() => document.querySelector('video')!.paused)).toBe(true);
+  });
+
+  test('clicking retry button does not pause a playing video', async ({ context }) => {
+    let calls = 0;
+    await context.route(SEARCH_URL, (route) => {
+      calls++;
+      route.fulfill({
+        contentType: 'text/html',
+        body: calls === 1 ? MOCK_SEARCH_NOT_FOUND_HTML : MOCK_SEARCH_FOUND_HTML,
+      });
+    });
+
+    const page = await context.newPage();
+    await page.route(MOCK_YT_URL, (route) =>
+      route.fulfill({ contentType: 'text/html', body: MOCK_YT_HTML }),
+    );
+    await page.goto(MOCK_YT_URL);
+    await page.waitForSelector('#djw-indicator.djw-not-found');
+
+    await startVideoPlaying(page);
+    expect(await page.evaluate(() => document.querySelector('video')!.paused)).toBe(false);
+
+    await page.locator('#djw-indicator button').click();
+    await page.waitForSelector('#djw-indicator.djw-found');
+
+    // Video should still be playing — retry doesn't navigate away
+    expect(await page.evaluate(() => document.querySelector('video')!.paused)).toBe(false);
   });
 });

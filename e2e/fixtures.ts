@@ -14,7 +14,11 @@ export const test = base.extend<{
     // Use Playwright's bundled Chromium — system Chrome 137+ removed --load-extension
     const context = await chromium.launchPersistentContext('', {
       headless: false,
-      args: [`--disable-extensions-except=${extensionPath}`, `--load-extension=${extensionPath}`],
+      args: [
+        `--disable-extensions-except=${extensionPath}`,
+        `--load-extension=${extensionPath}`,
+        '--autoplay-policy=no-user-gesture-required',
+      ],
     });
     await use(context);
     await context.close();

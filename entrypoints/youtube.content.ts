@@ -125,6 +125,11 @@ async function waitForVideoDuration(maxWaitMs = 3000): Promise<number | null> {
   return null;
 }
 
+function pauseVideoIfPlaying(): void {
+  const video = document.querySelector<HTMLVideoElement>('video');
+  if (video && !video.paused) video.pause();
+}
+
 function isAdPlaying(): boolean {
   return (
     document.getElementById('movie_player')?.classList.contains('ad-showing') === true ||
@@ -274,6 +279,7 @@ function injectFoundIndicator(tracklistUrl: string): void {
   anchor.href = tracklistUrl;
   anchor.target = '_blank';
   anchor.rel = 'noopener noreferrer';
+  anchor.addEventListener('click', pauseVideoIfPlaying);
   anchor.appendChild(makeIcon());
   anchor.appendChild(document.createTextNode('Tracklist found on 1001tracklists'));
   insertBelowTitle(anchor);
@@ -305,6 +311,7 @@ function injectNotFoundIndicator(query: string, videoId: string): void {
   searchLink.target = '_blank';
   searchLink.rel = 'noopener noreferrer';
   searchLink.textContent = '🔍 Search';
+  searchLink.addEventListener('click', pauseVideoIfPlaying);
   el.appendChild(searchLink);
 
   insertBelowTitle(el);
