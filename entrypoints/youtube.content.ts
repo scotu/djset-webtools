@@ -41,13 +41,33 @@ async function handleNavigation(): Promise<void> {
     return;
   }
 
-  await waitForAdToEnd();
+  // Fast path: serve cached result immediately — skip ad wait and duration check.
+  const cached = await getCachedResult(videoId);
+  log('cached:', cached);
+
+  if (typeof cached === 'string') {
+    injectFoundIndicator(cached);
+    return;
+  }
+
+  if (cached === null) {
+    const title = getVideoTitle();
+    const query = title ? normaliseTitle(title) : '';
+    if (query.length >= 5) injectNotFoundIndicator(query, videoId);
+    return;
+  }
+
+  // Not yet searched — full flow: ad wait, duration check, then search.
+  if (isAdPlaying()) {
+    injectAdIndicator();
+    await waitForAdToEnd();
+    removeElement(`#${INDICATOR_ID}`);
+  }
 
   const duration = await waitForVideoDuration();
   log('duration:', duration, 'min required:', MIN_DURATION_SECONDS);
   if (duration === null || duration < MIN_DURATION_SECONDS) return;
 
-  // Resolve query early — needed for all states including not-found.
   const title = getVideoTitle();
   log('title:', title);
   if (!title) return;
@@ -55,20 +75,6 @@ async function handleNavigation(): Promise<void> {
   log('query:', query);
   if (query.length < 5) return;
 
-  const cached = await getCachedResult(videoId);
-  log('cached:', cached);
-
-  if (cached === null) {
-    injectNotFoundIndicator(query, videoId);
-    return;
-  }
-
-  if (typeof cached === 'string') {
-    injectFoundIndicator(cached);
-    return;
-  }
-
-  // Not yet searched — show loading state then fetch.
   await searchAndDisplay(query, videoId);
 }
 
@@ -199,7 +205,8 @@ function ensureStyle(): void {
       background: #16213e;
       color: #fff;
     }
-    #${INDICATOR_ID}.djw-searching {
+    #${INDICATOR_ID}.djw-searching,
+    #${INDICATOR_ID}.djw-ad {
       opacity: 0.6;
     }
     #${INDICATOR_ID}.djw-not-found {
@@ -237,6 +244,16 @@ function insertBelowTitle(el: HTMLElement): void {
   if (titleEl?.parentElement) {
     titleEl.parentElement.insertBefore(el, titleEl.nextSibling);
   }
+}
+
+function injectAdIndicator(): void {
+  ensureStyle();
+  const el = document.createElement('div');
+  el.id = INDICATOR_ID;
+  el.className = 'djw-ad';
+  el.appendChild(makeIcon());
+  el.appendChild(document.createTextNode('Ad in progress…'));
+  insertBelowTitle(el);
 }
 
 function injectSearchingIndicator(): void {

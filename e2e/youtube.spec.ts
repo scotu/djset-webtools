@@ -197,7 +197,7 @@ test.describe('indicator states (intercepted)', () => {
 });
 
 test.describe('ad handling', () => {
-  test('indicator does not appear while an ad is playing', async ({ context }) => {
+  test('ad indicator appears while an ad is playing', async ({ context }) => {
     await context.route(SEARCH_URL, (route) =>
       route.fulfill({ contentType: 'text/html', body: MOCK_SEARCH_FOUND_HTML }),
     );
@@ -208,12 +208,12 @@ test.describe('ad handling', () => {
     );
     await page.goto(MOCK_YT_URL);
 
-    // Content script is blocked inside waitForAdToEnd(); no indicator should appear
-    await page.waitForTimeout(1500);
-    await expect(page.locator('#djw-indicator')).toHaveCount(0);
+    // Content script shows the ad indicator and blocks inside waitForAdToEnd()
+    await expect(page.locator('#djw-indicator.djw-ad')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('#djw-indicator')).toContainText('Ad in progress');
   });
 
-  test('indicator appears once the ad finishes', async ({ context }) => {
+  test('ad indicator is replaced by found indicator once the ad finishes', async ({ context }) => {
     await context.route(SEARCH_URL, (route) =>
       route.fulfill({ contentType: 'text/html', body: MOCK_SEARCH_FOUND_HTML }),
     );
@@ -224,19 +224,19 @@ test.describe('ad handling', () => {
     );
     await page.goto(MOCK_YT_URL);
 
-    // Confirm the content script is waiting (no indicator yet)
-    await page.waitForTimeout(500);
-    await expect(page.locator('#djw-indicator')).toHaveCount(0);
+    // Ad indicator should be visible while the ad plays
+    await page.waitForSelector('#djw-indicator.djw-ad');
 
     // Simulate the ad ending — YouTube removes the ad-showing class
     await page.evaluate(() =>
       document.getElementById('movie_player')?.classList.remove('ad-showing'),
     );
 
+    // Ad indicator disappears, found indicator takes its place
     await expect(page.locator('#djw-indicator.djw-found')).toBeVisible({ timeout: 8000 });
   });
 
-  test('indicator appears after consecutive ads finish', async ({ context }) => {
+  test('found indicator appears after consecutive ads finish', async ({ context }) => {
     await context.route(SEARCH_URL, (route) =>
       route.fulfill({ contentType: 'text/html', body: MOCK_SEARCH_FOUND_HTML }),
     );
@@ -247,7 +247,8 @@ test.describe('ad handling', () => {
     );
     await page.goto(MOCK_YT_URL);
 
-    await page.waitForTimeout(500);
+    // Ad indicator visible throughout
+    await page.waitForSelector('#djw-indicator.djw-ad');
 
     // First ad ends, second starts within the 300ms re-check window, then second ends
     await page.evaluate(() => {
@@ -258,5 +259,58 @@ test.describe('ad handling', () => {
     });
 
     await expect(page.locator('#djw-indicator.djw-found')).toBeVisible({ timeout: 8000 });
+  });
+
+  test('cached found result shown immediately without ad indicator', async ({ context }) => {
+    let searchCalls = 0;
+    await context.route(SEARCH_URL, (route) => {
+      searchCalls++;
+      route.fulfill({ contentType: 'text/html', body: MOCK_SEARCH_FOUND_HTML });
+    });
+
+    // First page load: no ad — populates the cache
+    const page1 = await context.newPage();
+    await page1.route(MOCK_YT_URL, (route) =>
+      route.fulfill({ contentType: 'text/html', body: MOCK_YT_HTML }),
+    );
+    await page1.goto(MOCK_YT_URL);
+    await page1.waitForSelector('#djw-indicator.djw-found');
+    await page1.close();
+
+    // Second page load: ad is playing — cache hit should bypass ad wait entirely
+    const page2 = await context.newPage();
+    await page2.route(MOCK_YT_URL, (route) =>
+      route.fulfill({ contentType: 'text/html', body: MOCK_YT_HTML_WITH_AD }),
+    );
+    await page2.goto(MOCK_YT_URL);
+
+    await expect(page2.locator('#djw-indicator.djw-found')).toBeVisible({ timeout: 5000 });
+    await expect(page2.locator('#djw-indicator.djw-ad')).toHaveCount(0);
+    expect(searchCalls).toBe(1); // search only ran once, second visit served from cache
+  });
+
+  test('cached not-found result shown immediately without ad indicator', async ({ context }) => {
+    await context.route(SEARCH_URL, (route) =>
+      route.fulfill({ contentType: 'text/html', body: MOCK_SEARCH_NOT_FOUND_HTML }),
+    );
+
+    // First page load: no ad — populates the cache with null (not found)
+    const page1 = await context.newPage();
+    await page1.route(MOCK_YT_URL, (route) =>
+      route.fulfill({ contentType: 'text/html', body: MOCK_YT_HTML }),
+    );
+    await page1.goto(MOCK_YT_URL);
+    await page1.waitForSelector('#djw-indicator.djw-not-found');
+    await page1.close();
+
+    // Second page load: ad is playing — cache hit should bypass ad wait entirely
+    const page2 = await context.newPage();
+    await page2.route(MOCK_YT_URL, (route) =>
+      route.fulfill({ contentType: 'text/html', body: MOCK_YT_HTML_WITH_AD }),
+    );
+    await page2.goto(MOCK_YT_URL);
+
+    await expect(page2.locator('#djw-indicator.djw-not-found')).toBeVisible({ timeout: 5000 });
+    await expect(page2.locator('#djw-indicator.djw-ad')).toHaveCount(0);
   });
 });
