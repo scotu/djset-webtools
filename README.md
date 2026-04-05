@@ -27,8 +27,30 @@ All features can be toggled independently from the extension's options page.
 
 ### Requirements
 
-- [Node.js](https://nodejs.org) 18+
-- [pnpm](https://pnpm.io) 8+
+**Operating system:** macOS, Linux, or Windows.
+
+**Node.js 18 or later**
+
+Download from [nodejs.org](https://nodejs.org) and follow the installer for your platform, or use a version manager:
+
+```bash
+# macOS / Linux via nvm
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/HEAD/install.sh | bash
+nvm install --lts
+
+# macOS via Homebrew
+brew install node
+```
+
+**pnpm 8 or later**
+
+```bash
+# via npm (cross-platform, after installing Node.js)
+npm install -g pnpm
+
+# macOS via Homebrew
+brew install pnpm
+```
 
 ### Setup
 
@@ -68,6 +90,26 @@ pnpm test:watch
 # E2E tests (Playwright — requires a production build first)
 pnpm build && pnpm test:e2e
 ```
+
+---
+
+## Reproducing the Firefox build (AMO reviewers)
+
+These instructions produce a byte-equivalent copy of the Firefox package submitted to addons.mozilla.org.
+
+**Requirements:** Node.js 18+ and pnpm 8+ — see [installation instructions above](#requirements).
+
+```bash
+# 1. Install dependencies
+pnpm install
+
+# 2. Build and package the Firefox extension
+pnpm zip:firefox
+```
+
+The packaged extension is written to `.output/djset-webtools-<version>-firefox.zip`.
+
+All source files in this repository are unminified TypeScript. The build step (`wxt zip`) transpiles them to JavaScript and packages the result — no pre-built or machine-generated source files are included in this repository.
 
 ---
 
