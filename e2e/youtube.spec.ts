@@ -45,10 +45,19 @@ const MOCK_YT_HTML = `<!doctype html>
 <video data-duration="5400"></video>
 </body></html>`;
 
+// Two results: first matches the mock YT title well, second does not
 const MOCK_SEARCH_FOUND_HTML = `<html><body>
   <a href="/tracklist/abc123/test-artist-test-festival-2025.html">Test Artist @ Test Festival 2025</a>
+  <a href="/tracklist/zzz999/unrelated-artist-other-event-2020.html">Unrelated Artist @ Other Event 2020</a>
 </body></html>`;
 
+// Results present but none match the mock YT title
+const MOCK_SEARCH_LOW_CONFIDENCE_HTML = `<html><body>
+  <a href="/tracklist/zzz999/unrelated-artist-other-event-2020.html">Unrelated Artist @ Other Event 2020</a>
+  <a href="/tracklist/zzz888/another-dj-different-venue-2019.html">Another DJ @ Different Venue 2019</a>
+</body></html>`;
+
+// No tracklist links at all
 const MOCK_SEARCH_NOT_FOUND_HTML = `<html><body><p>No results found.</p></body></html>`;
 
 // Same page but with #movie_player carrying the ad-showing class YouTube uses during video ads
@@ -84,7 +93,7 @@ test.describe('YouTube indicator', () => {
     const count = await indicator.count();
     if (count > 0) {
       await expect(indicator).toBeVisible();
-      await expect(indicator).toHaveAttribute('href', /1001tracklists\.com\/tracklist\//);
+      await expect(indicator).toHaveAttribute('href', /1001tracklists\.com\/(tracklist|search)\//);
     }
   });
 });
@@ -111,7 +120,7 @@ test.describe('indicator states (intercepted)', () => {
     await expect(page.locator('#djw-indicator.djw-searching')).toHaveCount(0, { timeout: 6000 });
   });
 
-  test('found indicator appears and links to tracklist', async ({ context }) => {
+  test('found indicator appears and links to best-matching tracklist', async ({ context }) => {
     await context.route(SEARCH_URL, (route) =>
       route.fulfill({ contentType: 'text/html', body: MOCK_SEARCH_FOUND_HTML }),
     );
@@ -123,10 +132,45 @@ test.describe('indicator states (intercepted)', () => {
     await page.goto(MOCK_YT_URL);
 
     await expect(page.locator('#djw-indicator.djw-found')).toBeVisible({ timeout: 8000 });
-    await expect(page.locator('#djw-indicator')).toHaveAttribute('href', /\/tracklist\//);
+    // Should link to abc123 (the matching result), not zzz999 (the unrelated one)
+    await expect(page.locator('#djw-indicator')).toHaveAttribute('href', /abc123/);
   });
 
-  test('not-found indicator appears with correct text', async ({ context }) => {
+  test('found indicator selects best match from multiple results', async ({ context }) => {
+    await context.route(SEARCH_URL, (route) =>
+      route.fulfill({ contentType: 'text/html', body: MOCK_SEARCH_FOUND_HTML }),
+    );
+
+    const page = await context.newPage();
+    await page.route(MOCK_YT_URL, (route) =>
+      route.fulfill({ contentType: 'text/html', body: MOCK_YT_HTML }),
+    );
+    await page.goto(MOCK_YT_URL);
+
+    await page.waitForSelector('#djw-indicator.djw-found');
+    const href = await page.locator('#djw-indicator').getAttribute('href');
+    expect(href).toContain('abc123');
+    expect(href).not.toContain('zzz999');
+  });
+
+  test('search results indicator shown when no result matches YouTube title', async ({
+    context,
+  }) => {
+    await context.route(SEARCH_URL, (route) =>
+      route.fulfill({ contentType: 'text/html', body: MOCK_SEARCH_LOW_CONFIDENCE_HTML }),
+    );
+
+    const page = await context.newPage();
+    await page.route(MOCK_YT_URL, (route) =>
+      route.fulfill({ contentType: 'text/html', body: MOCK_YT_HTML }),
+    );
+    await page.goto(MOCK_YT_URL);
+
+    await expect(page.locator('#djw-indicator.djw-search-results')).toBeVisible({ timeout: 8000 });
+    await expect(page.locator('#djw-indicator')).toContainText('Search results on 1001tracklists');
+  });
+
+  test('search results indicator shown when search returns no results', async ({ context }) => {
     await context.route(SEARCH_URL, (route) =>
       route.fulfill({ contentType: 'text/html', body: MOCK_SEARCH_NOT_FOUND_HTML }),
     );
@@ -137,13 +181,12 @@ test.describe('indicator states (intercepted)', () => {
     );
     await page.goto(MOCK_YT_URL);
 
-    await expect(page.locator('#djw-indicator.djw-not-found')).toBeVisible({ timeout: 8000 });
-    await expect(page.locator('#djw-indicator')).toContainText('No tracklist found');
+    await expect(page.locator('#djw-indicator.djw-search-results')).toBeVisible({ timeout: 8000 });
   });
 
-  test('search link has correct query URL', async ({ context }) => {
+  test('search results indicator has correct search URL in data attribute', async ({ context }) => {
     await context.route(SEARCH_URL, (route) =>
-      route.fulfill({ contentType: 'text/html', body: MOCK_SEARCH_NOT_FOUND_HTML }),
+      route.fulfill({ contentType: 'text/html', body: MOCK_SEARCH_LOW_CONFIDENCE_HTML }),
     );
 
     const page = await context.newPage();
@@ -152,31 +195,12 @@ test.describe('indicator states (intercepted)', () => {
     );
     await page.goto(MOCK_YT_URL);
 
-    await page.waitForSelector('#djw-indicator.djw-not-found');
-    const searchLink = page.locator('#djw-indicator a.djw-action');
-    await expect(searchLink).toHaveAttribute('href', /main_search=Test/);
-    await expect(searchLink).toHaveAttribute('href', /search_selection=9/);
-  });
-
-  test('retry button re-searches and shows found indicator', async ({ context }) => {
-    let calls = 0;
-    await context.route(SEARCH_URL, (route) => {
-      calls++;
-      route.fulfill({
-        contentType: 'text/html',
-        body: calls === 1 ? MOCK_SEARCH_NOT_FOUND_HTML : MOCK_SEARCH_FOUND_HTML,
-      });
-    });
-
-    const page = await context.newPage();
-    await page.route(MOCK_YT_URL, (route) =>
-      route.fulfill({ contentType: 'text/html', body: MOCK_YT_HTML }),
+    await page.waitForSelector('#djw-indicator.djw-search-results');
+    await expect(page.locator('#djw-indicator')).toHaveAttribute(
+      'data-search-url',
+      /search-redirect\.html/,
     );
-    await page.goto(MOCK_YT_URL);
-
-    await page.waitForSelector('#djw-indicator.djw-not-found');
-    await page.locator('#djw-indicator button').click();
-    await expect(page.locator('#djw-indicator.djw-found')).toBeVisible({ timeout: 8000 });
+    await expect(page.locator('#djw-indicator')).toHaveAttribute('data-search-url', /q=Test/);
   });
 
   test('indicator not shown when feature is disabled', async ({ context, extensionId }) => {
@@ -305,18 +329,20 @@ test.describe('ad handling', () => {
     expect(searchCalls).toBe(1); // search only ran once, second visit served from cache
   });
 
-  test('cached not-found result shown immediately without ad indicator', async ({ context }) => {
+  test('cached search-results result shown immediately without ad indicator', async ({
+    context,
+  }) => {
     await context.route(SEARCH_URL, (route) =>
-      route.fulfill({ contentType: 'text/html', body: MOCK_SEARCH_NOT_FOUND_HTML }),
+      route.fulfill({ contentType: 'text/html', body: MOCK_SEARCH_LOW_CONFIDENCE_HTML }),
     );
 
-    // First page load: no ad — populates the cache with null (not found)
+    // First page load: no ad — populates the cache with a search URL
     const page1 = await context.newPage();
     await page1.route(MOCK_YT_URL, (route) =>
       route.fulfill({ contentType: 'text/html', body: MOCK_YT_HTML }),
     );
     await page1.goto(MOCK_YT_URL);
-    await page1.waitForSelector('#djw-indicator.djw-not-found');
+    await page1.waitForSelector('#djw-indicator.djw-search-results');
     await page1.close();
 
     // Second page load: ad is playing — cache hit should bypass ad wait entirely
@@ -326,7 +352,7 @@ test.describe('ad handling', () => {
     );
     await page2.goto(MOCK_YT_URL);
 
-    await expect(page2.locator('#djw-indicator.djw-not-found')).toBeVisible({ timeout: 5000 });
+    await expect(page2.locator('#djw-indicator.djw-search-results')).toBeVisible({ timeout: 5000 });
     await expect(page2.locator('#djw-indicator.djw-ad')).toHaveCount(0);
   });
 });
@@ -356,11 +382,9 @@ test.describe('pause on navigation', () => {
     expect(await page.evaluate(() => document.querySelector('video')!.paused)).toBe(true);
   });
 
-  test('clicking search link in not-found indicator pauses a playing video', async ({
-    context,
-  }) => {
+  test('clicking search results indicator pauses a playing video', async ({ context }) => {
     await context.route(SEARCH_URL, (route) =>
-      route.fulfill({ contentType: 'text/html', body: MOCK_SEARCH_NOT_FOUND_HTML }),
+      route.fulfill({ contentType: 'text/html', body: MOCK_SEARCH_LOW_CONFIDENCE_HTML }),
     );
 
     const page = await context.newPage();
@@ -368,44 +392,19 @@ test.describe('pause on navigation', () => {
       route.fulfill({ contentType: 'text/html', body: MOCK_YT_HTML }),
     );
     await page.goto(MOCK_YT_URL);
-    await page.waitForSelector('#djw-indicator.djw-not-found');
+    await page.waitForSelector('#djw-indicator.djw-search-results');
 
     await startVideoPlaying(page);
     expect(await page.evaluate(() => document.querySelector('video')!.paused)).toBe(false);
 
+    // Click sends a message to the background which opens the tab — no link navigation.
+    // Wait for the new tab to open (background calls browser.tabs.create), then close it.
     const [newTab] = await Promise.all([
       context.waitForEvent('page'),
-      page.locator('#djw-indicator a.djw-action').click(),
+      page.locator('#djw-indicator').click(),
     ]);
     await newTab.close();
 
     expect(await page.evaluate(() => document.querySelector('video')!.paused)).toBe(true);
-  });
-
-  test('clicking retry button does not pause a playing video', async ({ context }) => {
-    let calls = 0;
-    await context.route(SEARCH_URL, (route) => {
-      calls++;
-      route.fulfill({
-        contentType: 'text/html',
-        body: calls === 1 ? MOCK_SEARCH_NOT_FOUND_HTML : MOCK_SEARCH_FOUND_HTML,
-      });
-    });
-
-    const page = await context.newPage();
-    await page.route(MOCK_YT_URL, (route) =>
-      route.fulfill({ contentType: 'text/html', body: MOCK_YT_HTML }),
-    );
-    await page.goto(MOCK_YT_URL);
-    await page.waitForSelector('#djw-indicator.djw-not-found');
-
-    await startVideoPlaying(page);
-    expect(await page.evaluate(() => document.querySelector('video')!.paused)).toBe(false);
-
-    await page.locator('#djw-indicator button').click();
-    await page.waitForSelector('#djw-indicator.djw-found');
-
-    // Video should still be playing — retry doesn't navigate away
-    expect(await page.evaluate(() => document.querySelector('video')!.paused)).toBe(false);
   });
 });

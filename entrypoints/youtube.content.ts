@@ -13,8 +13,6 @@ const INDICATOR_ID = 'djw-indicator';
 const STYLE_ID = 'djw-youtube-style';
 const MIN_DURATION_SECONDS = 30 * 60;
 
-const SEARCH_BASE = 'https://www.1001tracklists.com/search/index.php';
-
 export default defineContentScript({
   matches: ['*://www.youtube.com/watch*'],
   runAt: 'document_idle',
@@ -46,7 +44,7 @@ async function handleNavigation(): Promise<void> {
   log('cached:', cached);
 
   if (typeof cached === 'string') {
-    injectFoundIndicator(cached);
+    injectResultIndicator(cached);
     return;
   }
 
@@ -85,9 +83,21 @@ async function searchAndDisplay(query: string, videoId: string): Promise<void> {
   await setCachedResult(videoId, url);
   removeElement(`#${INDICATOR_ID}`);
   if (url) {
-    injectFoundIndicator(url);
+    injectResultIndicator(url);
   } else {
     injectNotFoundIndicator(query, videoId);
+  }
+}
+
+function isTracklistUrl(url: string): boolean {
+  return url.includes('1001tracklists.com/tracklist/');
+}
+
+function injectResultIndicator(url: string): void {
+  if (isTracklistUrl(url)) {
+    injectFoundIndicator(url);
+  } else {
+    injectSearchResultsIndicator(url);
   }
 }
 
@@ -206,9 +216,14 @@ function ensureStyle(): void {
       height: 16px;
       flex-shrink: 0;
     }
-    #${INDICATOR_ID}.djw-found:hover {
+    #${INDICATOR_ID}.djw-found:hover,
+    #${INDICATOR_ID}.djw-search-results:hover {
       background: #16213e;
       color: #fff;
+    }
+    #${INDICATOR_ID}.djw-search-results {
+      opacity: 0.85;
+      cursor: pointer;
     }
     #${INDICATOR_ID}.djw-searching,
     #${INDICATOR_ID}.djw-ad {
@@ -285,6 +300,24 @@ function injectFoundIndicator(tracklistUrl: string): void {
   insertBelowTitle(anchor);
 }
 
+function injectSearchResultsIndicator(searchUrl: string): void {
+  ensureStyle();
+  // Cannot link directly to a chrome-extension:// URL from a web page — Chrome blocks it.
+  // Background opens the tab instead.
+  const el = document.createElement('div');
+  el.id = INDICATOR_ID;
+  el.className = 'djw-search-results';
+  el.setAttribute('role', 'button');
+  el.dataset.searchUrl = searchUrl;
+  el.addEventListener('click', () => {
+    pauseVideoIfPlaying();
+    sendMessage('openSearchTab', { url: searchUrl });
+  });
+  el.appendChild(makeIcon());
+  el.appendChild(document.createTextNode('Search results on 1001tracklists'));
+  insertBelowTitle(el);
+}
+
 function injectNotFoundIndicator(query: string, videoId: string): void {
   ensureStyle();
 
@@ -304,14 +337,14 @@ function injectNotFoundIndicator(query: string, videoId: string): void {
   });
   el.appendChild(retryBtn);
 
-  const searchUrl = `${SEARCH_BASE}?main_search=${encodeURIComponent(query)}&search_selection=9`;
-  const searchLink = document.createElement('a');
+  const searchUrl = `${browser.runtime.getURL('/search-redirect.html')}?q=${encodeURIComponent(query)}`;
+  const searchLink = document.createElement('button');
   searchLink.className = 'djw-action';
-  searchLink.href = searchUrl;
-  searchLink.target = '_blank';
-  searchLink.rel = 'noopener noreferrer';
   searchLink.textContent = '🔍 Search';
-  searchLink.addEventListener('click', pauseVideoIfPlaying);
+  searchLink.addEventListener('click', () => {
+    pauseVideoIfPlaying();
+    sendMessage('openSearchTab', { url: searchUrl });
+  });
   el.appendChild(searchLink);
 
   insertBelowTitle(el);
